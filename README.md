@@ -1,0 +1,1 @@
+Pinger crunches my [TagTime](https://github.com/dreeves/TagTime) data on a weekly basis. It's very personalized, but you could probably extract a decent Haskell TagTime library from it without too much trouble.
