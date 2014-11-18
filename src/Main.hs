@@ -222,14 +222,19 @@ main = do
 	maybe (return ()) (doBackup pings) (confBackupDir conf)
 	when (optDestroy opts) (mapM_ removeFile $ confFiles conf)
 	when (null pings) (putStrLn "No pings!" >> exitSuccess)
+	when (not $ optDestroy opts) (printData pings)
 
+printData :: [Ping] -> IO ()
+printData pings = do
 	printHarvestChart pings
 	putStrLn ""
 	printQualityGraph pings
 	putStrLn ""
 	printLevelGraph pings
 	putStrLn ""
-	printCounts pings
+	printCounts objTags pings
+	putStrLn ""
+	printCounts projTags pings
 
 doBackup :: [Ping] -> FilePath -> IO ()
 doBackup pings filepath = mapM_ backupTo =<< glob filepath where
@@ -269,10 +274,9 @@ printHarvestChart pings = do
 harvestData :: [Ping] -> Day -> [Text]
 harvestData pings day = map Text.pack [wkd, opsTime, otherTime, faiTime] where
 	wkd = formatTime locale "  %a " day
-	ps = filter ((day ==) . pingDayHere) pings
-	(fai, nonfai) = partition ((||) <$> (tagged "*FAI") <*> (tagged "*LRN")) ps
-	(other, nonother) = partition (tagged "@GROWTH") nonfai
-	ops = filter (tagged "*OPS") nonother
+	miri = filter (\p -> tagged "@MIRI" p && pingDayHere p == day) pings
+	(fai, nonfai) = partition (tagged "FAI") miri
+	(ops, other) = partition (tagged "UPK") nonfai
 
 	opsTime = printf " %4.1f " (roughHours ops)
 	otherTime = printf " %4.1f " (roughHours other)
@@ -325,12 +329,13 @@ tagGraph :: [Tag] -> [Ping] -> [Text]
 tagGraph ts ps = pingGraph ps [(t, unitWeight $ filter (tagged t) ps) | t <- ts]
 
 printQualityGraph :: [Ping] -> IO ()
-printQualityGraph = mapM_ putStrLn . tagGraph ["#1", "#2", "#3", "#4", "#5"]
+printQualityGraph = mapM_ putStrLn . tagGraph labels where
+	labels = ["#ADD", "#DIS", "#DRT", "#FLO", "#OUT", "#TRG"]
 
 printLevelGraph :: [Ping] -> IO ()
 printLevelGraph pings = do
 	let (meta, nonmeta) = partition (tagged "%META") pings
-	let (upk, nonupk) = partition (tagged "@UPKEEP") nonmeta
+	let (upk, nonupk) = partition (tagged "UPK") nonmeta
 	let (off, obj) = partition (Set.null . pingTags) nonupk
 	let content =
 		[ ("UPKEEP", unitWeight upk)
@@ -345,20 +350,32 @@ pingFraction = (1 %) . toInteger . Set.size . Set.filter objtag . pingTags where
 
 objTags :: [Text]
 objTags =
-	[ "*FAI"
-	, "*LRN"
-	, "*OPS"
-	, "@EXERCISE"
-	, "@GROWTH"
-	, "@HOBBY"
-	, "@REST"
-	, "@SOCIAL"
-	, "@UPKEEP" ]
+	[ "CSM"
+	, "EAT"
+	, "EXR"
+	, "FAI"
+	, "HYG"
+	, "LRN"
+	, "MHX"
+	, "NWK"
+	, "OoO"
+	, "PRT"
+	, "TCH"
+	, "TRA"
+	, "WRI" ]
 
-printCounts :: [Ping] -> IO ()
-printCounts pings = do
+projTags :: [Text]
+projTags =
+	[ "@Alli"
+	, "@LoH"
+	, "@MIRI"
+	, "@MoW"
+	, "@Nate" ]
+
+printCounts :: [Text] -> [Ping] -> IO ()
+printCounts tags pings = do
 	let weighted tag = [(p, pingFraction p) | p <- filter (tagged tag) pings]
-	let rows = [(tag, weighted tag) | tag <- objTags]
+	let rows = [(tag, weighted tag) | tag <- tags]
 	let mostWeight (_, a) (_, b) = compare (sum $ map snd b) (sum $ map snd a)
 	let sortedRows = sortBy mostWeight rows
 	mapM_ putStrLn $ pingGraph pings sortedRows
