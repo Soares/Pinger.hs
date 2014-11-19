@@ -360,6 +360,7 @@ objTags =
 	, "MHX"
 	, "NWK"
 	, "OoO"
+	, "PRO"
 	, "PRT"
 	, "TCH"
 	, "TRA"
