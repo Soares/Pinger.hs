@@ -275,7 +275,7 @@ harvestData :: [Ping] -> Day -> [Text]
 harvestData pings day = map Text.pack [wkd, opsTime, otherTime, faiTime] where
 	wkd = formatTime locale "  %a " day
 	miri = filter (\p -> tagged "@MIRI" p && pingDayHere p == day) pings
-	(fai, nonfai) = partition (tagged "FAI") miri
+	(fai, nonfai) = partition ((&&) <$> (tagged "FAI") <*> (tagged "WRI")) miri
 	(ops, other) = partition (tagged "UPK") nonfai
 
 	opsTime = printf " %4.1f " (roughHours ops)
@@ -334,9 +334,10 @@ printQualityGraph = mapM_ putStrLn . tagGraph labels where
 
 printLevelGraph :: [Ping] -> IO ()
 printLevelGraph pings = do
+	let isOff = (||) <$> (tagged "OFF") <*> (Set.null . pingTags)
 	let (meta, nonmeta) = partition (tagged "%META") pings
 	let (upk, nonupk) = partition (tagged "UPK") nonmeta
-	let (off, obj) = partition (Set.null . pingTags) nonupk
+	let (off, obj) = partition isOff nonupk
 	let content =
 		[ ("UPKEEP", unitWeight upk)
 		, ("META", unitWeight meta)
