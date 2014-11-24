@@ -264,7 +264,7 @@ localDaySpan pings = [addDays i start | i <- [0 .. diffDays end start]]
 
 printHarvestChart :: [Ping] -> IO ()
 printHarvestChart pings = do
-	let labels = ["      ", "OPS   ", "OTHER ", "FAI   "] :: [Text]
+	let labels = ["    ", "OPS ", "FAI "] :: [Text]
 	let separator = replicate 4 "|" :: [Text]
 	let days = localDaySpan pings
 	let results = map (harvestData pings) days
@@ -272,14 +272,12 @@ printHarvestChart pings = do
 	mapM_ putStrLn $ foldr1 (zipWith (<>)) chart
 
 harvestData :: [Ping] -> Day -> [Text]
-harvestData pings day = map Text.pack [wkd, opsTime, otherTime, faiTime] where
+harvestData pings day = map Text.pack [wkd, opsTime, faiTime] where
 	wkd = formatTime locale "  %a " day
 	miri = filter (\p -> tagged "@MIRI" p && pingDayHere p == day) pings
-	(fai, nonfai) = partition ((&&) <$> (tagged "FAI") <*> (tagged "WRI")) miri
-	(ops, other) = partition (tagged "UPK") nonfai
+	(ops, fai) = partition (tagged "UPK") miri
 
 	opsTime = printf " %4.1f " (roughHours ops)
-	otherTime = printf " %4.1f " (roughHours other)
 	faiTime = printf " %4.1f " (roughHours fai)
 
 	roughMinutes xs = fromIntegral $ 45 * length xs :: Double
@@ -346,8 +344,12 @@ printLevelGraph pings = do
 	mapM_ putStrLn $ pingGraph pings content
 
 pingFraction :: Ping -> Rational
-pingFraction = (1 %) . toInteger . Set.size . Set.filter objtag . pingTags where
-	objtag t = "*" `Text.isPrefixOf` t || "@" `Text.isPrefixOf` t
+pingFraction p = if denominator == 0 then 0 else 1 % denominator where
+	denominator = toInteger $ Set.size $ Set.filter objtag $ pingTags p
+	objtag t = not
+		 ( "#" `Text.isPrefixOf` t
+		|| "@" `Text.isPrefixOf` t
+		|| "%" `Text.isPrefixOf` t )
 
 objTags :: [Text]
 objTags =
@@ -360,7 +362,7 @@ objTags =
 	, "MHX"
 	, "NWK"
 	, "OoO"
-	, "PRO"
+	, "PRG"
 	, "PRT"
 	, "TCH"
 	, "TRA"
