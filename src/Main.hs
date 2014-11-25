@@ -275,7 +275,7 @@ harvestData :: [Ping] -> Day -> [Text]
 harvestData pings day = map Text.pack [wkd, opsTime, faiTime] where
 	wkd = formatTime locale "  %a " day
 	miri = filter (\p -> tagged "@MIRI" p && pingDayHere p == day) pings
-	(ops, fai) = partition (tagged "UPK") miri
+	(ops, fai) = partition ((||) <$> (tagged "UPK") <*> (tagged "CSM")) miri
 
 	opsTime = printf " %4.1f " (roughHours ops)
 	faiTime = printf " %4.1f " (roughHours fai)
