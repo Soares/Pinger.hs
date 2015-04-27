@@ -2,7 +2,7 @@
 module Main (main) where
 import Prelude hiding (putStr, putStrLn, readFile, sequence, writeFile)
 import Control.Applicative
-import Control.Monad (when)
+import Control.Monad (when, unless)
 import Data.List (sort, sortBy, intersperse, partition)
 import Data.Maybe (listToMaybe, catMaybes)
 import Data.Ratio ((%))
@@ -24,6 +24,9 @@ import System.IO (hPrint, hFlush, stderr, stdout)
 import System.Locale (TimeLocale, defaultTimeLocale)
 import Text.Printf (printf)
 import Text.Read (readMaybe)
+
+anypred :: [a -> Bool] -> a -> Bool
+anypred fs x = foldr (\f b -> b || f x) False fs
 
 programDescription :: String
 programDescription =
@@ -222,7 +225,7 @@ main = do
 	maybe (return ()) (doBackup pings) (confBackupDir conf)
 	when (optDestroy opts) (mapM_ removeFile $ confFiles conf)
 	when (null pings) (putStrLn "No pings!" >> exitSuccess)
-	when (not $ optDestroy opts) (printData pings)
+	unless (optDestroy opts) (printData pings)
 
 printData :: [Ping] -> IO ()
 printData pings = do
@@ -274,11 +277,12 @@ printHarvestChart pings = do
 harvestData :: [Ping] -> Day -> [Text]
 harvestData pings day = map Text.pack [wkd, opsTime, faiTime] where
 	wkd = formatTime locale "  %a " day
-	miri = filter (\p -> tagged "@MIRI" p && pingDayHere p == day) pings
-	(ops, fai) = partition ((||) <$> (tagged "UPK") <*> (tagged "CSM")) miri
-
 	opsTime = printf " %4.1f " (roughHours ops)
 	faiTime = printf " %4.1f " (roughHours fai)
+
+	isOps = anypred [tagged "UPK", tagged "CSM"]
+	miri = filter (\p -> tagged "@MIRI" p && pingDayHere p == day) pings
+	(ops, fai) = partition isOps miri
 
 	roughMinutes xs = fromIntegral $ 45 * length xs :: Double
 	halfHours xs = round (roughMinutes xs / 30) :: Integer
@@ -328,53 +332,49 @@ tagGraph ts ps = pingGraph ps [(t, unitWeight $ filter (tagged t) ps) | t <- ts]
 
 printQualityGraph :: [Ping] -> IO ()
 printQualityGraph = mapM_ putStrLn . tagGraph labels where
-	labels = ["#ADD", "#DIS", "#DRT", "#FLO", "#OUT", "#TRG"]
+	labels = ["#DRT", "#YKB", "#OUT"]
 
 printLevelGraph :: [Ping] -> IO ()
 printLevelGraph pings = do
-	let isOff = (||) <$> (tagged "OFF") <*> (Set.null . pingTags)
-	let (meta, nonmeta) = partition (tagged "%META") pings
-	let (upk, nonupk) = partition (tagged "UPK") nonmeta
-	let (off, obj) = partition isOff nonupk
+	let isWork = anypred [tagged "@MIRI", tagged "@Macro", tagged "@MoW"]
+	let isOff = anypred [tagged "OFF", Set.null . pingTags]
+	let (work, nonwork) = partition isWork pings
+	let (play, nonplay) = partition (tagged "@Nate") nonwork
+	let (others, nonothers) = partition (tagged "@Others") nonplay
+	let (off, lost) = partition isOff nonothers
 	let content =
-		[ ("UPKEEP", unitWeight upk)
-		, ("META", unitWeight meta)
-		, ("OBJ", unitWeight obj)
-		, ("OFF", unitWeight off) ]
+		[ ("Work", unitWeight work)
+		, ("Play", unitWeight play)
+		, ("Others", unitWeight others)
+		, ("Loss", unitWeight lost)
+		, ("Untagged", unitWeight off) ]
 	mapM_ putStrLn $ pingGraph pings content
 
 pingFraction :: Ping -> Rational
 pingFraction p = if denominator == 0 then 0 else 1 % denominator where
 	denominator = toInteger $ Set.size $ Set.filter objtag $ pingTags p
-	objtag t = not
-		 ( "#" `Text.isPrefixOf` t
-		|| "@" `Text.isPrefixOf` t
-		|| "%" `Text.isPrefixOf` t )
+	objtag t = not ( "#" `Text.isPrefixOf` t || "@" `Text.isPrefixOf` t )
 
 objTags :: [Text]
 objTags =
-	[ "CSM"
-	, "EAT"
+	[ "COM"
+	, "CSM"
 	, "EXR"
 	, "FAI"
-	, "HYG"
 	, "LRN"
-	, "MHX"
 	, "NWK"
-	, "OoO"
-	, "PRG"
 	, "PRT"
-	, "TCH"
 	, "TRA"
+	, "UPK"
 	, "WRI" ]
 
 projTags :: [Text]
 projTags =
-	[ "@Alli"
-	, "@LoH"
-	, "@MIRI"
-	, "@MoW"
-	, "@Nate" ]
+	[ "@MIRI"
+	, "@Mow"
+	, "@Macro"
+	, "@Nate"
+	, "@Others" ]
 
 printCounts :: [Text] -> [Ping] -> IO ()
 printCounts tags pings = do
